@@ -18,6 +18,7 @@ args_mapping = {
 
 
 def split_raw_to_lines(stream):
+    # 读取stream
     trunk_size = 4
     tmp_info = b''
     while True:
@@ -28,8 +29,36 @@ def split_raw_to_lines(stream):
             tmp_info = tmp_info[split_index + 1:]
 
 
+def split_raw_to_lines1(stream):
+    # 读取stream，这里只为了读取手机的型号，用来匹配表判断是否适配
+    trunk_size = 4
+    tmp_info = b''
+    while True:
+        tmp_info += stream.read(trunk_size)
+        if b'\r' in tmp_info:
+            while b'\r' in tmp_info:
+                split_index = tmp_info.index(b'\r')
+                yield tmp_info[:split_index]
+                tmp_info = tmp_info[split_index + 1:]
+        else:
+            while b'\n' in tmp_info:
+                split_index = tmp_info.index(b'\n')
+                yield tmp_info[:split_index]
+                tmp_info = tmp_info[split_index + 1:]
+
+
 def generate_order(device):
     width, height = getWandH.get_raw_window_size1(device)
+    opmodle = device.shell("getprop ro.product.model", stream=True)
+    # 获取机型
+    for line in split_raw_to_lines1(opmodle):
+        strmodle = line
+        break
+    strzifu = str(strmodle,'utf-8')
+    if strzifu == "OPPO A37m":
+        # 单独适配OPPO a37m这台设备
+        width = 1100
+        height = 1800
     op = device.shell("getevent -l", stream=True)
     order = {
         "action": None,
@@ -48,15 +77,16 @@ def generate_order(device):
         if info[2] in args_mapping.keys():
             if info[2] == 'ABS_MT_POSITION_X':
                 order['x'] = int(info[3], 16) / width
+                if strzifu == "M2012K11AC":
+                    # 单独适配红米k40
+                    order['x'] = (int(info[3], 16) / width)/8
             elif info[2] == 'ABS_MT_POSITION_Y':
                 order['y'] = int(info[3], 16) / height
+                if strzifu == "M2012K11AC":
+                    # 单独适配红米k40
+                    order['y'] = (int(info[3], 16) / height)/8
             elif info[2] == "SYN_REPORT":
                 order['action_lock'] = False
-                # if ready_ignore_times > 0 and order['action'] not in ['down', 'up']:
-                #     # 产生信号频率过高，删选部分
-                #     ready_ignore_times -= 1
-                #     continue
-                # ready_ignore_times = ignore_move_times
                 yield order
                 order['action'] = 'move'
         elif info[2] in action_mapping.keys():
